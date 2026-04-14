@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in addr;
     struct hostent *hostPtr;
     char buffer_msg[BUF_SIZE];
-    char escolha[10];
+    char escolha[BUF_SIZE];
     char username[50], password[50];
 
     if (argc != 3) {
