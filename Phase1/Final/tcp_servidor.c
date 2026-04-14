@@ -7,27 +7,26 @@
 #include <netdb.h>
 #include <string.h>
 #include <sys/wait.h>
-#include <time.h>           /* F3: para uptime */
+#include <time.h>           
 
 #define SERVER_PORT     9000
-#define BUF_SIZE        1024
+#define BUF_SIZE        4096
 #define VERSION         "C-cord v1.0"
 
-/* F3: instante em que o servidor arrancou */
 time_t server_start_time;
 
 void process_client(int fd);
 void erro(char *msg);
 void login(int client_fd);
 void registo(int client_fd);
-void handle_commands(int client_fd, const char *username);  /* F3 */
+void handle_commands(int client_fd, const char *username);  
 
 int main() {
     int fd, client;
     struct sockaddr_in addr, client_addr;
     socklen_t client_addr_size;
 
-    server_start_time = time(NULL);   /* F3: regista o arranque */
+    server_start_time = time(NULL);   
 
     bzero((void *) &addr, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -164,7 +163,7 @@ void login(int client_fd) {
 
     printf("Log: Login de '%s' aceite.\n", username);
 
-    /* F3: entra no loop de comandos após autenticação */
+    // entra no loop de comandos após autenticação 
     handle_commands(client_fd, username);
 }
 
@@ -176,7 +175,6 @@ void handle_commands(int client_fd, const char *username) {
     char response[BUF_SIZE];
     int nread;
 
-    /* Mensagem de boas-vindas com os comandos disponíveis */
     snprintf(response, BUF_SIZE,
         "\nBem-vindo, %s!\n"
         "Comandos disponiveis:\n"
@@ -187,17 +185,17 @@ void handle_commands(int client_fd, const char *username) {
         username);
     write(client_fd, response, strlen(response));
 
-    /* Loop bloqueante de leitura/escrita */
+    // Loop bloqueante de leitura/escrita 
     while ((nread = read(client_fd, buffer, BUF_SIZE - 1)) > 0) {
         buffer[nread] = '\0';
 
-        /* Remove o '\n' final */
+        // Remove o '\n' final 
         if (nread > 0 && buffer[nread - 1] == '\n')
             buffer[nread - 1] = '\0';
 
         printf("Log [%s]: '%s'\n", username, buffer);
 
-        /* ---- GET_INFO ---- */
+        // ---- GET_INFO ----
         if (strcmp(buffer, "GET_INFO") == 0) {
             time_t now = time(NULL);
             long uptime_sec = (long)(now - server_start_time);
@@ -212,18 +210,18 @@ void handle_commands(int client_fd, const char *username) {
                 VERSION, horas, minutos, segundos);
             write(client_fd, response, strlen(response));
 
-        /* ---- ECHO ---- */
+        // ---- ECHO ----
         } else if (strncmp(buffer, "ECHO ", 5) == 0) {
             snprintf(response, BUF_SIZE, "[ECHO] %s\n>> ", buffer + 5);
             write(client_fd, response, strlen(response));
 
-        /* ---- QUIT ---- */
+        // ---- QUIT ----
         } else if (strcmp(buffer, "QUIT") == 0) {
             write(client_fd, "Sessao terminada. Adeus!\n", 25);
             printf("Log [%s]: sessao terminada.\n", username);
             break;
 
-        /* ---- Comando desconhecido ---- */
+        // ---- Comando desconhecido ----
         } else {
             snprintf(response, BUF_SIZE,
                 "Comando desconhecido: '%s'\n"
