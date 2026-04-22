@@ -68,6 +68,7 @@ int main() {
 void process_client(int client_fd) {
     char buffer[BUF_SIZE];
     int nread;
+    int desligou_voluntariamente = 0;
 
     while (1) {
         char msg_menu[] =
@@ -97,6 +98,7 @@ void process_client(int client_fd) {
         
         if (escolha == 0) {
             write(client_fd, "A desligar...\n", 14);
+            desligou_voluntariamente = 1;
             break; 
         }
 
@@ -109,7 +111,12 @@ void process_client(int client_fd) {
         }
         // Após login() ou registo(), o ciclo recomeça e mostra o menu de novo
     }
-    printf("Log: Cliente terminou a sessão.\n");
+    if (desligou_voluntariamente) {
+        printf("Log: O C-cord foi desligado pelo utilizador.\n");
+    } else {
+        printf("Log: Cliente terminou a sessão (Conexão perdida).\n");
+    }
+    
     close(client_fd);
 }
 
@@ -180,9 +187,9 @@ void handle_commands(int client_fd, const char *username) {
         "Comandos disponiveis:\n"
         "  GET_INFO      - informacao do servidor\n"
         "  ECHO <msg>    - devolve a mensagem enviada\n"
-        "  LIST_ALL    - Listar utilizadores registados\n"
-        "  SEND_MSG    - Enviar: SEND_MSG <user> <msg>\n"
-        "  CHECK INBOX - Ler mensagens recebidas\n" 
+        "  LIST_ALL      - Listar utilizadores registados\n"
+        "  SEND_MSG      - Enviar: SEND_MSG <user> <msg>\n"
+        "  CHECK_INBOX   - Ler mensagens recebidas\n" 
         "  QUIT          - terminar sessao\n"
         "\n>> ",
         username);
@@ -265,7 +272,7 @@ void handle_commands(int client_fd, const char *username) {
 
 
         // ---- F4: CHECK INBOX (Recuperar mensagens guardadas) ---- 
-        else if (strcmp(buffer, "CHECK INBOX") == 0) {
+        else if (strcmp(buffer, "CHECK_INBOX") == 0) {
             char filename[100];
             snprintf(filename, sizeof(filename), "inbox_%s.txt", username);
             
@@ -288,15 +295,15 @@ void handle_commands(int client_fd, const char *username) {
 
         // ---- QUIT ----
         else if (strcmp(buffer, "QUIT") == 0) {
-            write(client_fd, "Sessao terminada. Adeus!\n", 25);
-            printf("Log [%s]: sessao terminada.\n", username);
+            write(client_fd, "Sessao terminada. A voltar ao menu...\n", 38);
+            printf("Log [%s]: Sessao terminada (voltou ao menu).\n", username);
             break;
 
         // ---- Comando desconhecido ----
         } else {
             snprintf(response, BUF_SIZE,
                 "Comando desconhecido: '%s'\n"
-                "Tente GET_INFO, ECHO <msg> ou QUIT.\n>> ",
+                "Tente GET_INFO, ECHO <msg>, LIST_ALL, SEND_MSG, CHECK_INBOX ou QUIT.\n>> ",
                 buffer);
             write(client_fd, response, strlen(response));
         }
