@@ -40,17 +40,30 @@ int main(int argc, char *argv[]) {
 
     // --- CICLO PRINCIPAL ---
     while (1) {
+        int saltar_input = 0;
+        
+        // Limpa o buffer antes de ler
+        memset(buffer_msg, 0, BUF_SIZE);
+
         // 1. Espera pelo Menu ou Prompt
         while ((n = read(fd, buffer_msg, BUF_SIZE - 1)) > 0) {
             buffer_msg[n] = '\0';
             printf("%s", buffer_msg);
             fflush(stdout);
+            if (strstr(buffer_msg, "Sessao terminada") != NULL) {
+                saltar_input = 1;
+                break; 
+            }
             if (strstr(buffer_msg, "C-cord > ") != NULL || strstr(buffer_msg, ">> ") != NULL)
                 break;
             if (strstr(buffer_msg, "A desligar") != NULL || strstr(buffer_msg, "Adeus") != NULL) goto fim; // alteração
         }
 
         if (n <= 0) break;
+
+        if (saltar_input) {
+            continue; 
+        }
 
         // 2. Envia escolha ou comando
         if (fgets(escolha, sizeof(escolha), stdin) == NULL) break;
@@ -77,6 +90,8 @@ int main(int argc, char *argv[]) {
             
             }
         }
+    continuar:
+        continue;
     }
 
 fim:
