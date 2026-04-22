@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
             fflush(stdout);
             if (strstr(buffer_msg, "C-cord > ") != NULL || strstr(buffer_msg, ">> ") != NULL)
                 break;
-            if (strstr(buffer_msg, "A desligar") != NULL) goto fim;
+            if (strstr(buffer_msg, "A desligar") != NULL || strstr(buffer_msg, "Adeus") != NULL) goto fim; // alteração
         }
 
         if (n <= 0) break;
@@ -62,19 +62,20 @@ int main(int argc, char *argv[]) {
         if (opcao == 1 || opcao == 2) {
             // Username
             n = read(fd, buffer_msg, BUF_SIZE - 1);
-            buffer_msg[n] = '\0';
-            printf("%s", buffer_msg);
-            fgets(username, sizeof(username), stdin);
-            write(fd, username, strlen(username));
-
-            // Password
-            n = read(fd, buffer_msg, BUF_SIZE - 1);
-            buffer_msg[n] = '\0';
-            printf("%s", buffer_msg);
-            fgets(password, sizeof(password), stdin);
-            write(fd, password, strlen(password));
-
-
+            if (n > 0){
+                buffer_msg[n] = '\0';
+                printf("%s", buffer_msg);
+                fgets(username, sizeof(username), stdin);
+                write(fd, username, strlen(username));
+    
+                // Password
+                n = read(fd, buffer_msg, BUF_SIZE - 1);
+                buffer_msg[n] = '\0';
+                printf("%s", buffer_msg);
+                fgets(password, sizeof(password), stdin);
+                write(fd, password, strlen(password));
+            
+            }
         }
     }
 
