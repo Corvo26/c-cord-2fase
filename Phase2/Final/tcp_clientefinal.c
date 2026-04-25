@@ -42,21 +42,31 @@ int main(int argc, char *argv[]) {
     while (1) {
         int saltar_input = 0;
         
-        // Limpa o buffer antes de ler
         memset(buffer_msg, 0, BUF_SIZE);
 
         // 1. Espera pelo Menu ou Prompt
+        // Correcção da lógica de leitura para evitar deadlock pós-QUIT
         while ((n = read(fd, buffer_msg, BUF_SIZE - 1)) > 0) {
             buffer_msg[n] = '\0';
             printf("%s", buffer_msg);
             fflush(stdout);
+
+            // Se a sessão terminou, verificamos se o menu veio no mesmo pacote
             if (strstr(buffer_msg, "Sessao terminada") != NULL) {
-                saltar_input = 1;
-                break; 
+                if (strstr(buffer_msg, "C-cord > ") == NULL) {
+                    saltar_input = 1;
+                    break;
+                }
             }
-            if (strstr(buffer_msg, "C-cord > ") != NULL || strstr(buffer_msg, ">> ") != NULL)
+
+            // Se encontrar um dos prompts de entrada, sai do loop de leitura
+            if (strstr(buffer_msg, "C-cord > ") != NULL || strstr(buffer_msg, ">> ") != NULL) {
                 break;
-            if (strstr(buffer_msg, "A desligar") != NULL || strstr(buffer_msg, "Adeus") != NULL) goto fim; // alteração
+            }
+
+            if (strstr(buffer_msg, "A desligar") != NULL || strstr(buffer_msg, "Adeus") != NULL) {
+                goto fim;
+            }
         }
 
         if (n <= 0) break;
@@ -65,37 +75,41 @@ int main(int argc, char *argv[]) {
             continue; 
         }
 
-        // 2. Envia escolha ou comando
+        // 2. Lê comando do teclado e envia ao servidor
         if (fgets(escolha, sizeof(escolha), stdin) == NULL) break;
         write(fd, escolha, strlen(escolha));
 
         int opcao = atoi(escolha);
 
-        // 3. Se for login ou registo, envia credenciais
+        // 3. Lógica específica para Login (1) ou Registo (2)
         if (opcao == 1 || opcao == 2) {
-            // Username
+            // Espera pelo prompt "Username: " ou "Novo Username: "
             n = read(fd, buffer_msg, BUF_SIZE - 1);
             if (n > 0){
                 buffer_msg[n] = '\0';
                 printf("%s", buffer_msg);
+                fflush(stdout);
+                
                 fgets(username, sizeof(username), stdin);
                 write(fd, username, strlen(username));
     
-                // Password
+                // Espera pelo prompt "Password: " ou "Nova Password: "
                 n = read(fd, buffer_msg, BUF_SIZE - 1);
-                buffer_msg[n] = '\0';
-                printf("%s", buffer_msg);
-                fgets(password, sizeof(password), stdin);
-                write(fd, password, strlen(password));
-            
+                if (n > 0) {
+                    buffer_msg[n] = '\0';
+                    printf("%s", buffer_msg);
+                    fflush(stdout);
+                    
+                    fgets(password, sizeof(password), stdin);
+                    write(fd, password, strlen(password));
+                }
             }
         }
-    continuar:
-        continue;
     }
 
 fim:
     close(fd);
+    printf("\nCliente encerrado.\n");
     return 0;
 }
 
@@ -103,4 +117,3 @@ void erro(char *msg) {
     perror(msg);
     exit(-1);
 }
-
