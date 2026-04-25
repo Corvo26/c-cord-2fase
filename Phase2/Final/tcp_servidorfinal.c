@@ -64,7 +64,7 @@ int main() {
 }
 
 /* ------------------------------------------------------------------ */
-/* ------------------------------------------------------------------ */
+
 void process_client(int client_fd) {
     char buffer[BUF_SIZE];
     int nread;
@@ -149,6 +149,7 @@ void criar_admin() {
 
     fclose(fp);
 }
+
 /* ------------------------------------------------------------------ */
 
 void login(int client_fd) {
@@ -192,8 +193,13 @@ void login(int client_fd) {
         }
     }
     fclose(fp);
-
-    if (!encontrado) {
+	if( strcmp(verif_file,"0") == 0 && !encontrado){
+		printf("Log: Login para utilizador:'%s' ainda não foi validado pelos administradores\n", username);
+        const char *msg = "A aguardar validação do administrador.\n";
+		write(client_fd, msg, strlen(msg));
+        return;
+	}
+    else if (!encontrado) {
         printf("Log: Login falhado para '%s'.\n", username);
         write(client_fd, "Credenciais invalidas. Adeus!\n", 30);
         return;
@@ -206,6 +212,7 @@ void login(int client_fd) {
 }
 
 /* ------------------------------------------------------------------ */
+
 void registo(int client_fd) {
     char username[50], password[50], buffer[BUF_SIZE];
     int nread;
@@ -254,51 +261,71 @@ void registo(int client_fd) {
     write(client_fd, "Registo concluido com sucesso!\n", 31);
 }
 
+/* ------------------------------------------------------------------ */
 
 void handle_commands(int client_fd, const char *username) {
-    char buffer[BUF_SIZE];
-    char response[BUF_SIZE * 2];
-    int nread;
-    int offset=0;
-    char admin_nome[50]="admin";
-    char verif_file[50];
-    int admin=strcmp(admin_nome, username);
+    char buffer[BUF_SIZE], response[BUF_SIZE * 2];
+    char linha[110];
+    char admin_nome[50] = "admin";
+    int nread, offset = 0;
+    int admin_total = 0, autorizacao = 0, admin = 0;
+    char user_f[50], pass_f[50], verif_f[50], admin_f[50];
+
+    // 1. LER ESTATUTO DO UTILIZADOR ATUAL
+    FILE *fp = fopen("utilizadores.txt", "r");
+    if (fp != NULL) {
+        while (fgets(linha, sizeof(linha), fp)) {
+            if (sscanf(linha, "%49[^:]:%49[^:]:%49[^:]:%49[^ \n]", user_f, pass_f, verif_f, admin_f) >= 3) {
+                if (strcmp(username, user_f) == 0) {
+                    if (strcmp(verif_f, "1") == 0) autorizacao = 1;
+                    if (strcmp(admin_f, "1") == 0) admin = 1;
+                }
+            }
+        }
+        fclose(fp);
+    }
+    
+    if (strcmp(admin_nome, username) == 0) {
+        admin_total = 1;
+    }
+
+    // 2. MOSTRAR MENU ADAPTADO AO ESTATUTO
     offset = snprintf(response, BUF_SIZE,
          "\nBem-vindo, %s!\n"
-        "Comandos disponiveis:\n"
-        "  GET_INFO      - informacao do servidor\n"
-        "  ECHO <msg>    - devolve a mensagem enviada\n"
-        "  LIST_ALL      - Listar utilizadores registados\n"
-        "  SEND_MSG      - Enviar: SEND_MSG <user> <msg>\n"
-        "  CHECK_INBOX   - Ler mensagens recebidas\n" , username);
+         "Comandos disponiveis:\n"
+         "  GET_INFO      - informacao do servidor\n"
+         "  ECHO <msg>    - devolve a mensagem enviada\n"
+         "  LIST_ALL      - Listar utilizadores registados\n"
+         "  SEND_MSG      - Enviar: SEND_MSG <user> <msg>\n"
+         "  CHECK_INBOX   - Ler mensagens recebidas\n" , username);
 
-    // 2. Expressão Matemática Completa: NOVO = ANTIGO + ATUAL
-    if (admin == 0) {
+    if (admin_total == 1 || admin == 1) {
         offset = offset + snprintf(response + offset, BUF_SIZE - offset, 
         "  PENDING_USERS - pedidos que estejam pendentes(Admin)\n"
         "  ACCEPT <user> - autorizar um utilizador\n"
-        "  DELETE <user> - eliminar um utilizador\n");
+        "  DELETE <user> - eliminar um utilizador\n"
+		"  GIVE_PERMISSIONS <user> - tornar um utilizador um admin\n");
     }
 
-    // 3. Continua a somar para não perder a posição inicial
     offset = offset + snprintf(response + offset, BUF_SIZE - offset, 
                                "  QUIT          - terminar sessao\n\n>> ");
 
     write(client_fd, response, offset);
 
-    // Loop bloqueante de leitura/escrita 
-       // Loop bloqueante de leitura/escrita 
+    // 3. LOOP DE COMANDOS
     while ((nread = read(client_fd, buffer, BUF_SIZE - 1)) > 0) {
         buffer[nread] = '\0';
 
-        // Remove o '\n' final 
         if (nread > 0 && buffer[nread - 1] == '\n')
             buffer[nread - 1] = '\0';
 
         printf("Log [%s]: '%s'\n", username, buffer);
+        
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- GET_INFO ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
-        // ---- GET_INFO ----
-        if (strcmp(buffer, "GET_INFO") == 0) {
+		 if (strcmp(buffer, "GET_INFO") == 0) {
             time_t now = time(NULL);
             long uptime_sec = (long)(now - server_start_time);
             long horas  = uptime_sec / 3600;
@@ -307,65 +334,94 @@ void handle_commands(int client_fd, const char *username) {
 
             snprintf(response, BUF_SIZE,
                 "[INFO] Versao  : %s\n"
-                "[INFO] Uptime  : %ldh %ldm %lds\n"
-                ">> ",
+                "[INFO] Uptime  : %ldh %ldm %lds\n>> ",
                 VERSION, horas, minutos, segundos);
-            write(client_fd, response, strlen(response));        
+            write(client_fd, response, strlen(response));
+                  
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- ECHO ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
-        // ---- ECHO ----
         } else if (strncmp(buffer, "ECHO ", 5) == 0) {
             snprintf(response, BUF_SIZE, "[ECHO] %s\n>> ", buffer + 5);
             write(client_fd, response, strlen(response));
         }
+        
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- LIST ALL ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
-        // ---- F4: LIST_ALL (Listar utilizadores do ficheiro) ---- 
         else if (strcmp(buffer, "LIST_ALL") == 0) {
-            FILE *fp = fopen("utilizadores.txt", "r");
+            fp = fopen("utilizadores.txt", "r");
             char lista[BUF_SIZE] = "\n--- Utilizadores Registados ---\n";
-            char linha[110], user_f[50], pass_f[50];
+            char linha_l[110];
 
             if (fp == NULL) {
                 write(client_fd, "Erro ao aceder base de dados.\n>> ", 33);
             } else {
-                while (fgets(linha, sizeof(linha), fp)) {
-                    if (sscanf(linha, "%49[^:]:%49[^:]:%49[^:]", user_f, pass_f,verif_file) == 3) {
-						if (strcmp(verif_file,"1") == 0){
-							strcat(lista, "- ");
-							strcat(lista, user_f);
-							strcat(lista, "\n");
-						}
-					}
-				}
+                while (fgets(linha_l, sizeof(linha_l), fp)) {
+                    if (sscanf(linha_l, "%49[^:]:%49[^:]:%49[^:]", user_f, pass_f, verif_f) == 3) {
+                        if (strcmp(verif_f, "1") == 0) { // Mostra apenas os aprovados
+                            strcat(lista, "- ");
+                            strcat(lista, user_f);
+                            strcat(lista, "\n");
+                        }
+                    }
+                }
                 fclose(fp);
                 strcat(lista, "--------------------------------\n>> ");
                 write(client_fd, lista, strlen(lista));
             }
         }
+        
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- SEND_MSG ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-        // ---- F4: SEND_MSG <destinatario> <mensagem> ---- 
         else if (strncmp(buffer, "SEND_MSG ", 9) == 0) {
             char dest[50], msg_text[BUF_SIZE];
-            // Tenta ler o destino e o resto da linha como mensagem
+            int autorizacao_destino = 0;
+            
             if (sscanf(buffer + 9, "%s %[^\n]", dest, msg_text) == 2) {
-                char filename[100];
-                snprintf(filename, sizeof(filename), "inbox_%s.txt", dest);
+                fp = fopen("utilizadores.txt", "r");
+                if (fp != NULL) {
+                    while (fgets(linha, sizeof(linha), fp)) {
+                        if (sscanf(linha, "%49[^:]:%49[^:]:%49[^:]:%49[^ \n]", user_f, pass_f, verif_f, admin_f) >= 3) {
+                            if (strcmp(dest, user_f) == 0 && strcmp(verif_f, "1") == 0) {
+                                autorizacao_destino = 1;
+                                break;
+                            }
+                        }
+                    }
+                    fclose(fp);
+                }
                 
-                FILE *f_msg = fopen(filename, "a"); // "a" para anexar mensagens
-                if (f_msg != NULL) {
-                    fprintf(f_msg, "De [%s]: %s\n", username, msg_text);
-                    fclose(f_msg);
-                    write(client_fd, "Mensagem guardada no servidor.\n>> ", 34);
+                if (autorizacao_destino == 1) {
+                    char filename[100];
+                    snprintf(filename, sizeof(filename), "inbox_%s.txt", dest);
+                    
+                    FILE *f_msg = fopen(filename, "a"); 
+                    if (f_msg != NULL) {
+                        fprintf(f_msg, "De [%s]: %s\n", username, msg_text);
+                        fclose(f_msg);
+                        write(client_fd, "Mensagem guardada no servidor.\n>> ", 34);
+                    } else {
+                        write(client_fd, "Erro ao processar mensagem.\n>> ", 30);
+                    }
                 } else {
-                    write(client_fd, "Erro ao processar mensagem.\n>> ", 30);
+                    write(client_fd, "Destinatario nao validado ou inexistente.\n>> ", 45);
                 }
             } else {
                 write(client_fd, "Uso incorreto! Ex: SEND_MSG joao Ola!\n>> ", 41);
             }
         }
+        
+        
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- CHECK_INBOX ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-        // ---- F4: CHECK INBOX (Recuperar mensagens guardadas) ---- 
         else if (strcmp(buffer, "CHECK_INBOX") == 0) {
             char filename[100];
             snprintf(filename, sizeof(filename), "inbox_%s.txt", username);
@@ -380,126 +436,181 @@ void handle_commands(int client_fd, const char *username) {
                     strcat(inbox_content, linha_msg);
                 }
                 fclose(f_msg);
-                remove(filename); // Apaga o ficheiro após a leitura para "limpar" a inbox
+                remove(filename); 
                 strcat(inbox_content, "--------------------\n>> ");
                 write(client_fd, inbox_content, strlen(inbox_content));
             }
         }
+        
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- PENDING_USERS ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
           
-		else if(strcmp(buffer, "PENDING_USERS") == 0 && admin == 0) { 
-			FILE *fp = fopen("utilizadores.txt", "r");
-			char lista[BUF_SIZE] = "\n--- Utilizadores a aguardar Aprovação ---\n";
-			char linha[110], user_f[50], pass_f[50], verif_file[10], admin_f[10];
+        else if(strcmp(buffer, "PENDING_USERS") == 0 && (admin == 1 || admin_total == 1)) { 
+            fp = fopen("utilizadores.txt", "r");
+            char lista[BUF_SIZE] = "\n--- Utilizadores a aguardar Aprovação ---\n";
 
-			if (fp == NULL) {
-				write(client_fd, "Erro ao aceder base de dados.\n>> ", 33);
-			} else {
-        // Formato esperado: username:password:permissao:admin
-				while (fgets(linha, sizeof(linha), fp)) {
-					if (sscanf(linha, "%49[^:]:%49[^:]:%9[^:]:%9[^ \n]", user_f, pass_f, verif_file, admin_f) >= 3) {
-						if (strcmp(verif_file, "0") == 0) {
-							strcat(lista, "PENDENTE: ");
-							strcat(lista, user_f);
-							strcat(lista, "\n");
-						}
-					}
-				}
-			fclose(fp);
-			strcat(lista, "------------------------------------------\n>> ");
-			write(client_fd, lista, strlen(lista));
-			}
-		}
-		
-		else if (strncmp(buffer, "ACCEPT ", 7) == 0 && admin == 0) {
-			char target_user[50];
-			sscanf(buffer + 7, "%s", target_user);
+            if (fp == NULL) {
+                write(client_fd, "Erro ao aceder base de dados.\n>> ", 33);
+            } else {
+                while (fgets(linha, sizeof(linha), fp)) {
+                    if (sscanf(linha, "%49[^:]:%49[^:]:%49[^:]:%49[^ \n]", user_f, pass_f, verif_f, admin_f) >= 3) {
+                        if (strcmp(verif_f, "0") == 0) {
+                            strcat(lista, "PENDENTE: ");
+                            strcat(lista, user_f);
+                            strcat(lista, "\n");
+                        }
+                    }
+                }
+                fclose(fp);
+                strcat(lista, "------------------------------------------\n>> ");
+                write(client_fd, lista, strlen(lista));
+            }
+        }
+        
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- ACCEPT ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////
+       
+        
+        else if (strncmp(buffer, "ACCEPT ", 7) == 0 && (admin == 1 || admin_total == 1)) {
+            char target_user[50];
+            sscanf(buffer + 7, "%s", target_user);
 
-			FILE *fp = fopen("utilizadores.txt", "r");
-			FILE *ftemp = fopen("utilizadores.tmp", "w");
+            fp = fopen("utilizadores.txt", "r");
+            FILE *ftemp = fopen("utilizadores.tmp", "w");
     
-			if (fp == NULL || ftemp == NULL) {
-				write(client_fd, "Erro ao processar ficheiros.\n>> ", 32);
-			} else {
-				char linha[110], user_f[50], pass_f[50], verif_f[10], admin_f[10];
-				int modificado = 0;
+            if (fp == NULL || ftemp == NULL) {
+                write(client_fd, "Erro ao processar ficheiros.\n>> ", 32);
+            } else {
+                int modificado = 0;
 
-				while (fgets(linha, sizeof(linha), fp)) {
-					if (sscanf(linha, "%49[^:]:%49[^:]:%49[^:]:%49[^ \n]", user_f, pass_f, verif_f, admin_f) >= 3) {
-						if (strcmp(user_f, target_user) == 0 && strcmp(verif_f, "0") == 0) {
-							fprintf(ftemp, "%s:%s:1:%s\n", user_f, pass_f, admin_f);
-							modificado = 1;
-					} else {
-						fprintf(ftemp, "%s", linha);
-					}
-					}
-				}
-				fclose(fp);
-				fclose(ftemp);
-				char *msg_a = "Utilizador aprovado com sucesso!\n>> ";
-				char *msg_b = "Utilizador nao encontrado ou ativo.\n>> ";
-				if (modificado) {
-					rename("utilizadores.tmp", "utilizadores.txt");
-					write(client_fd, msg_a, strlen(msg_a));
-				} else {
-					remove("utilizadores.tmp");
-					write(client_fd,msg_b, strlen(msg_b));
-				}
-		}
-	 }
-		else if (strncmp(buffer, "DELETE ", 7) == 0 && admin == 0) {
-			char target_user[50];
-			sscanf(buffer + 7, "%s", target_user);
+                while (fgets(linha, sizeof(linha), fp)) {
+                    if (sscanf(linha, "%49[^:]:%49[^:]:%49[^:]:%49[^ \n]", user_f, pass_f, verif_f, admin_f) >= 3) {
+                        if (strcmp(user_f, target_user) == 0 && strcmp(verif_f, "0") == 0) {
+                            fprintf(ftemp, "%s:%s:1:%s\n", user_f, pass_f, admin_f);
+                            modificado = 1;
+                        } else {
+                            fprintf(ftemp, "%s", linha);
+                        }
+                    }
+                }
+                fclose(fp);
+                fclose(ftemp);
+                
+                if (modificado) {
+                    rename("utilizadores.tmp", "utilizadores.txt");
+                    write(client_fd, "Utilizador aprovado com sucesso!\n>> ", 36);
+                } else {
+                    remove("utilizadores.tmp");
+                    write(client_fd, "Utilizador nao encontrado ou ativo.\n>> ", 39);
+                }
+            }
+        }
+        
+        
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- DELETE ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
-			FILE *fp = fopen("utilizadores.txt", "r");
+
+        else if (strncmp(buffer, "DELETE ", 7) == 0 && (admin == 1 || admin_total == 1)) {
+            char target_user[50];
+            sscanf(buffer + 7, "%s", target_user);
+
+            fp = fopen("utilizadores.txt", "r");
+            FILE *ftemp = fopen("utilizadores.tmp", "w");
+
+            if (fp == NULL || ftemp == NULL) {
+                write(client_fd, "Erro ao processar ficheiros.\n>> ", 32);
+            } else {
+                int modificado = 0;
+
+                while (fgets(linha, sizeof(linha), fp)) {
+                    if (sscanf(linha, "%49[^:]:%49[^:]:%49[^:]:%49[^ \n]", user_f, pass_f, verif_f, admin_f) >= 3) {
+                        if (strcmp(user_f, target_user) == 0 && strcmp("admin", target_user) != 0) {
+                            modificado = 1; 
+                        } else {
+                            fprintf(ftemp, "%s", linha);
+                        }
+                    }
+                }
+                fclose(fp);
+                fclose(ftemp);
+
+                if (modificado) {
+                    rename("utilizadores.tmp", "utilizadores.txt");
+                    write(client_fd, "Utilizador eliminado com sucesso!\n>> ", 37);
+                } else {
+                    remove("utilizadores.tmp");
+                    if (strcmp("admin", target_user) == 0) {
+                        write(client_fd, "Nao pode eliminar o admin principal.\n>> ", 40);
+                    } else {
+                        write(client_fd, "Utilizador nao encontrado.\n>> ", 30);
+                    }
+                }
+            }
+        }
+        
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- GIVE_PERMISSIONS ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////   
+     
+       else if (strncmp(buffer, "GIVE_PERMISSIONS ", 17) == 0 && (admin == 1 || admin_total == 1)) {
+            char target_user[50];
+            sscanf(buffer + 17, "%s", target_user);
+
+            fp = fopen("utilizadores.txt", "r");
+            FILE *fp = fopen("utilizadores.txt", "r");
 			FILE *ftemp = fopen("utilizadores.tmp", "w");
 
-			if (fp == NULL || ftemp == NULL) {
-				char *msg_f = "Erro ao processar ficheiros.\n>> ";
-				write(client_fd, msg_f, strlen(msg_f));
-			} else {
-				char linha[110], user_f[50], pass_f[50], verif_f[10], admin_f[10];
-				int modificado = 0;
+            if (fp == NULL || ftemp == NULL) {
+                write(client_fd, "Erro ao processar ficheiros.\n>> ", 32);
+            } else {
+                int modificado = 0;
 
-				while (fgets(linha, sizeof(linha), fp)) {
-					if (sscanf(linha, "%49[^:]:%49[^:]:%9[^:]:%9[^ \n]", user_f, pass_f, verif_f, admin_f) >= 3) {
-						// Se for o utilizador a apagar e não for o admin principal
-						if (strcmp(user_f, target_user) == 0 && strcmp("admin", target_user) != 0) {
-							modificado = 1; // Não escrevemos esta linha no ftemp (logo, é eliminada)
-						} else {
-							fprintf(ftemp, "%s", linha);
-						}
-					}
-				}
-				fclose(fp);
-				fclose(ftemp);
+                while (fgets(linha, sizeof(linha), fp)) {
+                    if (sscanf(linha, "%49[^:]:%49[^:]:%49[^:]:%49[^ \n]", user_f, pass_f, verif_f, admin_f) >= 3) {
+                        if (strcmp(user_f, target_user) == 0 && strcmp("admin", target_user) != 0) {
+							fprintf(ftemp, "%s:%s:1:1\n", user_f, pass_f);
+							modificado = 1;
+                        } else {
+                            fprintf(ftemp, "%s", linha);
+                        }
+                    }
+                }
+                fclose(fp);
+                fclose(ftemp);
 
-				if (modificado) {
-					rename("utilizadores.tmp", "utilizadores.txt");
-					char *msg_s = "Utilizador eliminado com sucesso!\n>> ";
-					write(client_fd, msg_s, strlen(msg_s));
-				} else {
-					remove("utilizadores.tmp");
-					if (strcmp("admin", target_user) == 0) {
-						char *msg_a = "Nao foi possivel eliminar o administrador principal.\n>> ";
-						write(client_fd, msg_a, strlen(msg_a));
-					} else {
-						char *msg_e = "Utilizador nao encontrado.\n>> ";
-						write(client_fd, msg_e, strlen(msg_e));
-					}
-				}
-			}
-		}
+                if (modificado) {
+                    rename("utilizadores.tmp", "utilizadores.txt");
+					char *msg = "Dado Permissão a esse utilizador com sucesso!\n>> ";
+					write(client_fd, msg, strlen(msg));
+                } else {
+                    remove("utilizadores.tmp");
+                    if (strcmp("admin", target_user) == 0) {
+                        char *msg_admin = "Nao pode alterar o administrador principal.\n>> ";
+						write(client_fd, msg_admin, strlen(msg_admin));
+                    } else {
+                        char *msg_erro = "Utilizador nao encontrado.\n>> ";
+						write(client_fd, msg_erro, strlen(msg_erro));
+                    }
+                }
+            }
+        }
+        
+        
+        
+//////////////////////////////////////////////////////////////////////////////////////////////////        
+		 // ---- QUIT ----//
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
-		
-		
-		
-        // ---- QUIT ----
         else if (strcmp(buffer, "QUIT") == 0) {
             write(client_fd, "Sessao terminada. A voltar ao menu...\n", 38);
             printf("Log [%s]: Sessao terminada (voltou ao menu).\n", username);
             break;
 
-        // ---- Comando desconhecido ----
         } else {
             snprintf(response, BUF_SIZE,
                 "Comando desconhecido: '%s'\n"
